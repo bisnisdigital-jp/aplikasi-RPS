@@ -139,7 +139,6 @@ export default function LandingPage({
             </div>
             <div>
               <span className="font-extrabold text-base text-slate-900 tracking-tight leading-none block">OBE Master <span className="text-indigo-600 font-bold text-xs uppercase bg-indigo-50 px-1.5 py-0.5 rounded ml-1">Pro</span></span>
-              <span className="text-[9px] font-bold text-slate-400 tracking-wider uppercase">Politeknik Sawunggalih Aji</span>
             </div>
           </div>
 
@@ -307,16 +306,6 @@ export default function LandingPage({
             </div>
             
             <div className="flex flex-wrap items-center justify-center gap-8 md:gap-12">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-slate-100 rounded-lg text-slate-600">
-                  <Building2 className="w-5 h-5" />
-                </div>
-                <div>
-                  <span className="text-xs font-extrabold text-slate-700 block uppercase tracking-wider">Politeknik Swg</span>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase">Sawunggalih Aji</span>
-                </div>
-              </div>
-              
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-slate-100 rounded-lg text-slate-600">
                   <Award className="w-5 h-5" />
@@ -587,7 +576,7 @@ export default function LandingPage({
               <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block">Optimalkan Kinerja Akademik Anda</span>
               <h2 className="text-2xl md:text-3.5xl font-extrabold text-slate-950 tracking-tight leading-none">Siap Merancang Rencana Belajar Semester Terbaik?</h2>
               <p className="text-xs md:text-sm text-slate-500 font-medium leading-relaxed">
-                Segera bergabung dan gunakan portal OBE Master Pro Politeknik Sawunggalih Aji untuk menghasilkan RPS bermutu tinggi berbasis data kompetensi unggulan.
+                Segera bergabung dan gunakan portal OBE Master Pro untuk menghasilkan RPS bermutu tinggi berbasis data kompetensi unggulan.
               </p>
               <button 
                 onClick={toggleModal}
@@ -606,7 +595,7 @@ export default function LandingPage({
               <span className="font-extrabold text-slate-800">OBE Master Pro Polsa</span>
             </div>
             <div>
-              <p className="text-[11px]">&copy; {new Date().getFullYear()} Politeknik Sawunggalih Aji. All Rights Reserved.</p>
+              <p className="text-[11px]">&copy; {new Date().getFullYear()} OBE Master Pro. All Rights Reserved.</p>
             </div>
           </div>
         </div>
