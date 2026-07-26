@@ -20,11 +20,14 @@ export interface CourseInfo {
   modelPembelajaran: string;
   dosenPengampu: string[];
   pengembangRPS: string;
+  pengembangNidn?: string;
   koordinatorRMK: string;
+  koordinatorRmkNidn?: string;
   koordinatorProdi: string;
   koordinatorProdiNidn?: string;
   lecturerNidn?: string;
   ketuaSpmi?: string;
+  spmiNidn?: string;
 }
 
 export interface CPL {

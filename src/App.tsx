@@ -49,7 +49,15 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { RPSData, CourseInfo, CPL, CPMK, SubCPMK, WeeklyPlan, Lecturer, UserRole } from "./types";
-import { generateRPSContent, generateCourseDescription } from "./services/geminiService";
+import mammoth from "mammoth";
+import { 
+  generateRPSContent, 
+  generateCourseDescription, 
+  generateWeeklyPlansOnly, 
+  generateCPLsOnly, 
+  generateCPMKsOnly, 
+  generateSubCPMKsOnly 
+} from "./services/geminiService";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import RPSPreview from "./components/RPSPreview";
 import LandingPage from "./components/LandingPage";
@@ -73,8 +81,12 @@ const initialRPS: RPSData = {
     modelPembelajaran: "Project Based Learning",
     dosenPengampu: [],
     pengembangRPS: "",
+    pengembangNidn: "",
     koordinatorRMK: "",
     koordinatorProdi: "HUJJATULLAH FAZLURRAHMAN",
+    koordinatorProdiNidn: "0612048501",
+    ketuaSpmi: "Ceicilia Rosma W, S.E., M.Si., Ak",
+    spmiNidn: "",
   },
   cpls: [],
   cpmks: [],
@@ -135,7 +147,12 @@ export default function App() {
   const [activeSection, setActiveSection] = useState("info");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
+  const [isGeneratingWeekly, setIsGeneratingWeekly] = useState(false);
+  const [isGeneratingCPL, setIsGeneratingCPL] = useState(false);
+  const [isGeneratingCPMK, setIsGeneratingCPMK] = useState(false);
+  const [isGeneratingSubCPMK, setIsGeneratingSubCPMK] = useState(false);
   const [oldRpsContent, setOldRpsContent] = useState("");
+  const [uploadedFileObj, setUploadedFileObj] = useState<{ name: string; size: number; type: string; base64Pdf?: { mimeType: string; data: string } } | null>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [loggedInUser, setLoggedInUser] = useState<Lecturer | null>(null);
   const [username, setUsername] = useState("");
@@ -198,6 +215,22 @@ export default function App() {
       { id: '5', name: 'D3 Teknik Informatika', code: 'TI' }
     ];
   });
+  const [showCustomProdiModal, setShowCustomProdiModal] = useState(false);
+  const [customProdiName, setCustomProdiName] = useState("");
+  const [customProdiCode, setCustomProdiCode] = useState("");
+  const [showCustomDosenModal, setShowCustomDosenModal] = useState(false);
+  const [customDosenName, setCustomDosenName] = useState("");
+  const [customDosenNidn, setCustomDosenNidn] = useState("");
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({
+    name: "",
+    nidn: "",
+    email: "",
+    role: "dosen" as UserRole,
+    password: ""
+  });
+  const [editingUser, setEditingUser] = useState<Lecturer | null>(null);
+  const [editPasswordValue, setEditPasswordValue] = useState("");
   const [globalCPLs, setGlobalCPLs] = useState<CPL[]>(() => {
     const saved = localStorage.getItem('globalCPLs');
     return saved ? JSON.parse(saved) : [];
@@ -478,51 +511,51 @@ export default function App() {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Rencana Pembelajaran Semester - ${rps.courseInfo.name || 'OBE_RPS'}</title>
+  <title>RPS_${(rps.courseInfo.name || 'OBE_RPS').replace(/\s+/g, '_')}</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,600;0,700;0,900;1,300&display=swap');
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     body { 
-      background-color: #f8fafc; 
-      padding: 40px 20px; 
+      background-color: #ffffff; 
+      padding: 0; 
+      margin: 0; 
       font-family: 'Inter', sans-serif;
     }
     @media print {
-      body { 
-        background-color: #ffffff;
-        padding: 0; 
-        margin: 0; 
+      html, body { 
+        background-color: #ffffff !important;
+        padding: 0 !important; 
+        margin: 0 !important; 
+        width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
       }
-      .page-break { page-break-after: always; }
+      .page-break { page-break-before: always !important; break-before: page !important; }
       .no-print { display: none !important; }
+      #rps-print-template {
+        width: 100% !important;
+        max-width: 210mm !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+      }
+      table { page-break-inside: auto !important; width: 100% !important; }
+      tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+      thead { display: table-header-group !important; }
     }
   </style>
 </head>
-<body class="bg-slate-50">
-  <div class="max-w-[210mm] mx-auto mb-6 bg-white border border-slate-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm no-print">
-    <div>
-      <h3 class="font-bold text-slate-800 text-sm">Pratinjau Berkas Offline - ${rps.courseInfo.name || 'RPS'}</h3>
-      <p class="text-xs text-slate-400">Gunakan pintasan peramban atau tombol di samping untuk menyimpan berkas ini sebagai PDF resmi.</p>
-    </div>
-    <div class="flex gap-2">
-      <button onclick="window.print()" class="px-5 py-2.5 bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-lg hover:bg-indigo-500 transition-all cursor-pointer">
-        Simpan sebagai PDF (Cetak)
-      </button>
-      <button onclick="window.close()" class="px-4 py-2.5 bg-slate-100 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-200 transition-all cursor-pointer">
-        Tutup Halaman
-      </button>
-    </div>
+<body class="bg-white p-0 m-0">
+  <div class="w-full max-w-[210mm] mx-auto bg-white p-0 m-0">
+    ${htmlContent}
   </div>
-
-  <div class="max-w-[210mm] mx-auto bg-white shadow-xl rounded-2xl p-8 print:p-0 print:shadow-none print:rounded-none">
-    \${htmlContent}
-  </div>
-
   <script>
     window.onload = function() {
       setTimeout(function() {
         window.print();
-      }, 800);
+      }, 500);
     };
   </script>
 </body>
@@ -575,21 +608,176 @@ export default function App() {
     );
   }
 
-  const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.type !== "text/plain" && !file.name.endsWith(".txt") && !file.name.endsWith(".md")) {
-      alert("Untuk sementara hanya mendukung file teks (.txt atau .md)");
+    const fileName = file.name;
+    const ext = fileName.slice(fileName.lastIndexOf('.')).toLowerCase();
+
+    if (!['.pdf', '.docx', '.doc', '.txt', '.md'].includes(ext)) {
+      alert("Format file tidak didukung. Harap unggah file PDF (.pdf), Word (.docx, .doc), atau Teks (.txt, .md).");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      setOldRpsContent(content);
-    };
-    reader.readAsText(file);
+    try {
+      let extractedText = "";
+      let base64PdfObj: { mimeType: string; data: string } | undefined = undefined;
+      let fileTypeLabel = "";
+
+      if (ext === '.docx' || ext === '.doc') {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        extractedText = result.value.trim();
+        if (!extractedText) {
+          alert("Tidak ada teks yang dapat dibaca dari dokumen Word tersebut.");
+          return;
+        }
+        fileTypeLabel = "Word (.docx)";
+      } else if (ext === '.pdf') {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (evt) => resolve(evt.target?.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        const base64Data = dataUrl.split(',')[1];
+        base64PdfObj = {
+          mimeType: "application/pdf",
+          data: base64Data
+        };
+        extractedText = `[Dokumen Referensi PDF: ${file.name}]`;
+        fileTypeLabel = "PDF Document";
+      } else {
+        extractedText = await file.text();
+        fileTypeLabel = "Teks (.txt/.md)";
+      }
+
+      setOldRpsContent(extractedText);
+      const fileObj = {
+        name: file.name,
+        size: file.size,
+        type: fileTypeLabel,
+        base64Pdf: base64PdfObj
+      };
+      setUploadedFileObj(fileObj);
+
+      // Auto generate full RPS (CPL, CPMK, Sub-CPMK, Weekly Plans, Assessment)
+      setIsGenerating(true);
+      try {
+        const courseName = rps.courseInfo.name || file.name.replace(/\.[^/.]+$/, "");
+        const courseDesc = rps.courseInfo.description || "Silabus / RPS hasil analisis dokumen diunggah";
+        
+        const generated = await generateRPSContent(
+          courseName,
+          courseDesc,
+          extractedText,
+          base64PdfObj
+        );
+
+        setRps((prev) => ({
+          ...prev,
+          courseInfo: {
+            ...prev.courseInfo,
+            name: prev.courseInfo.name || courseName,
+            description: prev.courseInfo.description || courseDesc
+          },
+          cpls: generated.cpls && generated.cpls.length > 0 ? generated.cpls : prev.cpls,
+          cpmks: generated.cpmks && generated.cpmks.length > 0 ? generated.cpmks : prev.cpmks,
+          subCpmks: generated.subCpmks && generated.subCpmks.length > 0 ? generated.subCpmks : prev.subCpmks,
+          weeklyPlans: generated.weeklyPlans && generated.weeklyPlans.length > 0 ? (generated.weeklyPlans as WeeklyPlan[]) : prev.weeklyPlans,
+          assessmentComponents: generated.assessmentComponents && generated.assessmentComponents.length > 0 ? generated.assessmentComponents : prev.assessmentComponents,
+        }));
+
+        alert(`File "${file.name}" berhasil diunggah & dibaca oleh AI!\n\nAI telah secara otomatis mengisi:\n- Pemetaan OBE (CPL, CPMK, Sub-CPMK)\n- Komponen Penilaian\n- Materi Mingguan (16 Pertemuan)`);
+      } catch (genErr) {
+        console.error("Auto generate on upload error:", genErr);
+        alert(`File "${file.name}" berhasil diunggah. Anda dapat mengklik "Full AI Draft" atau tombol AI di masing-masing menu untuk mengisi otomatis.`);
+      } finally {
+        setIsGenerating(false);
+      }
+
+    } catch (err) {
+      console.error("Gagal membaca file:", err);
+      alert("Terjadi kesalahan saat membaca berkas. Silakan pastikan berkas tidak terproteksi atau coba format lain.");
+    }
+  };
+
+  const handleGenerateCPLsAI = async () => {
+    if (!rps.courseInfo.name) {
+      alert("Harap isi Nama Mata Kuliah terlebih dahulu pada Informasi Umum.");
+      return;
+    }
+    setIsGeneratingCPL(true);
+    try {
+      const cpls = await generateCPLsOnly(
+        rps.courseInfo.name,
+        rps.courseInfo.description,
+        oldRpsContent,
+        uploadedFileObj?.base64Pdf
+      );
+      if (cpls && cpls.length > 0) {
+        setRps(prev => ({ ...prev, cpls }));
+        alert("CPL Program Studi berhasil di-generate secara otomatis oleh AI!");
+      }
+    } catch (error) {
+      console.error("Gagal generate CPL:", error);
+      alert("Gagal meng-generate CPL. Silakan coba lagi.");
+    } finally {
+      setIsGeneratingCPL(false);
+    }
+  };
+
+  const handleGenerateCPMKsAI = async () => {
+    if (!rps.courseInfo.name) {
+      alert("Harap isi Nama Mata Kuliah terlebih dahulu pada Informasi Umum.");
+      return;
+    }
+    setIsGeneratingCPMK(true);
+    try {
+      const cpmks = await generateCPMKsOnly(
+        rps.courseInfo.name,
+        rps.courseInfo.description,
+        rps.cpls,
+        oldRpsContent,
+        uploadedFileObj?.base64Pdf
+      );
+      if (cpmks && cpmks.length > 0) {
+        setRps(prev => ({ ...prev, cpmks }));
+        alert("CPMK Mata Kuliah berhasil di-generate secara otomatis oleh AI!");
+      }
+    } catch (error) {
+      console.error("Gagal generate CPMK:", error);
+      alert("Gagal meng-generate CPMK. Silakan coba lagi.");
+    } finally {
+      setIsGeneratingCPMK(false);
+    }
+  };
+
+  const handleGenerateSubCPMKsAI = async () => {
+    if (!rps.courseInfo.name) {
+      alert("Harap isi Nama Mata Kuliah terlebih dahulu pada Informasi Umum.");
+      return;
+    }
+    setIsGeneratingSubCPMK(true);
+    try {
+      const subCpmks = await generateSubCPMKsOnly(
+        rps.courseInfo.name,
+        rps.courseInfo.description,
+        rps.cpmks,
+        oldRpsContent,
+        uploadedFileObj?.base64Pdf
+      );
+      if (subCpmks && subCpmks.length > 0) {
+        setRps(prev => ({ ...prev, subCpmks }));
+        alert("Sub-CPMK Mingguan berhasil di-generate secara otomatis oleh AI!");
+      }
+    } catch (error) {
+      console.error("Gagal generate Sub-CPMK:", error);
+      alert("Gagal meng-generate Sub-CPMK. Silakan coba lagi.");
+    } finally {
+      setIsGeneratingSubCPMK(false);
+    }
   };
 
   const handleGenerateAI = async () => {
@@ -599,7 +787,12 @@ export default function App() {
     }
     setIsGenerating(true);
     try {
-      const generated = await generateRPSContent(rps.courseInfo.name, rps.courseInfo.description, oldRpsContent);
+      const generated = await generateRPSContent(
+        rps.courseInfo.name, 
+        rps.courseInfo.description, 
+        oldRpsContent,
+        uploadedFileObj?.base64Pdf
+      );
       setRps((prev) => ({
         ...prev,
         cpls: generated.cpls && generated.cpls.length > 0 ? generated.cpls : prev.cpls,
@@ -614,6 +807,35 @@ export default function App() {
       alert("Gagal membuat RPS otomatis. Silakan coba lagi.");
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateWeeklyAI = async () => {
+    if (!rps.courseInfo.name) {
+      alert("Harap isi Nama Mata Kuliah terlebih dahulu pada Informasi Umum.");
+      return;
+    }
+    setIsGeneratingWeekly(true);
+    try {
+      const plans = await generateWeeklyPlansOnly(
+        rps.courseInfo.name,
+        rps.courseInfo.description,
+        rps.subCpmks,
+        oldRpsContent,
+        uploadedFileObj?.base64Pdf
+      );
+      if (plans && plans.length > 0) {
+        setRps(prev => ({
+          ...prev,
+          weeklyPlans: plans as WeeklyPlan[]
+        }));
+        alert("Materi Mingguan (16 Pertemuan) berhasil ter-generate secara otomatis oleh AI!");
+      }
+    } catch (error) {
+      console.error("Gagal generate materi mingguan:", error);
+      alert("Gagal meng-generate materi mingguan. Silakan coba lagi.");
+    } finally {
+      setIsGeneratingWeekly(false);
     }
   };
 
@@ -740,19 +962,13 @@ export default function App() {
               </header>
               <button
                 onClick={() => {
-                  const name = prompt("Nama Lengkap:");
-                  const nidn = prompt("NIDN / Username:");
-                  const email = prompt("Email:");
-                  const role = prompt("Role (admin/dosen/kaprodi):") as UserRole;
-                  const password = prompt("Password:");
-                  if (name && nidn && email && role && password) {
-                    setLecturers([...lecturers, { id: Date.now().toString(), name, nidn, email, role, password }]);
-                  }
+                  setNewUserForm({ name: "", nidn: "", email: "", role: "dosen", password: "" });
+                  setShowAddUserModal(true);
                 }}
-                className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-indigo-600 to-sky-600 text-white rounded-[1.5rem] hover:shadow-xl hover:shadow-indigo-100 transition-all font-black shadow-lg shadow-indigo-50 active:scale-95"
+                className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-indigo-600 to-sky-600 text-white rounded-[1.5rem] hover:shadow-xl hover:shadow-indigo-100 transition-all font-black shadow-lg shadow-indigo-50 active:scale-95 cursor-pointer"
               >
                 <UserPlus className="w-5 h-5" />
-                Tambah User Baru
+                Tambah Pengguna Baru
               </button>
             </div>
 
@@ -785,6 +1001,7 @@ export default function App() {
                           <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border shadow-sm ${
                             l.role === 'admin' ? 'bg-rose-50 text-rose-600 border-rose-100' :
                             l.role === 'kaprodi' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                            l.role === 'spmi' ? 'bg-amber-50 text-amber-600 border-amber-100' :
                             'bg-sky-50 text-sky-600 border-sky-100'
                           }`}>
                             {l.role}
@@ -797,24 +1014,23 @@ export default function App() {
                           <div className="flex items-center justify-center gap-3">
                              <button 
                               onClick={() => {
-                                const newPass = prompt("Ketik password baru:");
-                                if(newPass) {
-                                  setLecturers(prev => prev.map(u => u.id === l.id ? {...u, password: newPass} : u));
-                                  alert("Password diperbarui");
-                                }
+                                setEditingUser(l);
+                                setEditPasswordValue(l.password || "");
                               }}
-                              className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all shadow-sm bg-white"
-                              title="Reset Password"
+                              className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all shadow-sm bg-white cursor-pointer"
+                              title="Ubah Password"
                             >
                               <Settings className="w-4 h-4" />
                             </button>
                             <button 
                               onClick={() => {
-                                if (window.confirm(`Hapus user ${l.name}?`)) {
+                                if (window.confirm(`Hapus pengguna ${l.name}?`)) {
                                   setLecturers(lecturers.filter(u => u.id !== l.id));
+                                  setSuccessNotice(`Pengguna "${l.name}" berhasil dihapus.`);
                                 }
                               }}
-                              className="p-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all shadow-sm bg-white"
+                              className="p-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all shadow-sm bg-white cursor-pointer"
+                              title="Hapus Pengguna"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1738,6 +1954,61 @@ export default function App() {
                     <div className="h-px bg-slate-100 grow" />
                   </div>
 
+                  {/* Dosen Pengembang RPS */}
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">Dosen Pengembang RPS</label>
+                    <div className="space-y-3">
+                      <select
+                        value={
+                          lecturers.find(l => l.name === rps.courseInfo.pengembangRPS)
+                            ? rps.courseInfo.pengembangRPS
+                            : rps.courseInfo.pengembangRPS
+                            ? "custom"
+                            : ""
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "__ADD_CUSTOM__") {
+                            setShowCustomDosenModal(true);
+                          } else if (val !== "custom") {
+                            const lect = lecturers.find(l => l.name === val);
+                            updateCourseInfo({
+                              pengembangRPS: val,
+                              pengembangNidn: lect ? lect.nidn : (rps.courseInfo.pengembangNidn || "")
+                            });
+                          }
+                        }}
+                        className="w-full px-7 py-5 bg-slate-50/50 border border-slate-100 rounded-2xl outline-none font-bold text-slate-700 shadow-sm"
+                      >
+                        <option value="">Pilih Dosen Pengembang...</option>
+                        {lecturers.map(l => (
+                          <option key={l.id} value={l.name}>{l.name}</option>
+                        ))}
+                        <option value="custom">Input Manual</option>
+                        <option value="__ADD_CUSTOM__" className="font-extrabold text-indigo-600">+ Tambah Dosen Baru...</option>
+                      </select>
+                      {(rps.courseInfo.pengembangRPS === "" || !lecturers.find(l => l.name === rps.courseInfo.pengembangRPS)) && rps.courseInfo.pengembangRPS !== "" && (
+                        <input
+                          type="text"
+                          value={rps.courseInfo.pengembangRPS}
+                          onChange={(e) => updateCourseInfo({ pengembangRPS: e.target.value })}
+                          className="w-full px-7 py-5 bg-indigo-50/50 border border-indigo-100 rounded-2xl font-bold text-indigo-700 outline-none"
+                          placeholder="Nama Dosen Pengembang & Gelar"
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">NIDN/NUPTK Dosen Pengembang RPS</label>
+                    <input
+                      type="text"
+                      value={rps.courseInfo.pengembangNidn || ""}
+                      onChange={(e) => updateCourseInfo({ pengembangNidn: e.target.value })}
+                      className="w-full px-7 py-5 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-sky-500/10 focus:bg-white outline-none transition-all font-bold text-slate-700 shadow-sm"
+                      placeholder="Nomor Induk Dosen / NUPTK"
+                    />
+                  </div>
+
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">Dosen Pengampu / Koordinator</label>
                     <div className="space-y-3">
@@ -1745,7 +2016,9 @@ export default function App() {
                         value={lecturers.find(l => l.name === rps.courseInfo.lecturer) ? rps.courseInfo.lecturer : rps.courseInfo.lecturer ? "custom" : ""}
                         onChange={(e) => {
                           const val = e.target.value;
-                          if (val !== "custom") {
+                          if (val === "__ADD_CUSTOM__") {
+                            setShowCustomDosenModal(true);
+                          } else if (val !== "custom") {
                             const lect = lecturers.find(l => l.name === val);
                             updateCourseInfo({ lecturer: val, lecturerNidn: lect ? lect.nidn : "" });
                           }
@@ -1757,6 +2030,7 @@ export default function App() {
                           <option key={l.id} value={l.name}>{l.name}</option>
                         ))}
                         <option value="custom">Input Manual</option>
+                        <option value="__ADD_CUSTOM__" className="font-extrabold text-indigo-600">+ Tambah Dosen Baru...</option>
                       </select>
                       {(rps.courseInfo.lecturer === "" || !lecturers.find(l => l.name === rps.courseInfo.lecturer)) && rps.courseInfo.lecturer !== "" && (
                         <input
@@ -1770,54 +2044,103 @@ export default function App() {
                     </div>
                   </div>
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">NIDN Koordinator</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">NIDN/NUPTK Koordinator</label>
                     <input
                       type="text"
                       value={rps.courseInfo.lecturerNidn || ""}
                       onChange={(e) => updateCourseInfo({ lecturerNidn: e.target.value })}
                       className="w-full px-7 py-5 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-sky-500/10 focus:bg-white outline-none transition-all font-bold text-slate-700 shadow-sm"
-                      placeholder="Nomor Induk Dosen"
+                      placeholder="Nomor Induk Dosen / NUPTK"
                     />
                   </div>
 
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">Validator (Koordinator Prodi)</label>
-                    <select
-                      value={lecturers.find(l => l.name === rps.courseInfo.koordinatorProdi) ? rps.courseInfo.koordinatorProdi : rps.courseInfo.koordinatorProdi ? "custom" : ""}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val !== "custom") {
-                          const lect = lecturers.find(l => l.name === val);
-                          updateCourseInfo({ koordinatorProdi: val, koordinatorProdiNidn: lect ? lect.nidn : "" });
-                        }
-                      }}
-                      className="w-full px-7 py-5 bg-slate-50/50 border border-slate-100 rounded-2xl outline-none font-bold text-slate-700 shadow-sm"
-                    >
-                      <option value="">Pilih Kaprodi...</option>
-                      {lecturers.map(l => (
-                        <option key={l.id} value={l.name}>{l.name}</option>
-                      ))}
-                      <option value="custom">Input Manual</option>
-                    </select>
+                    <div className="space-y-3">
+                      <select
+                        value={lecturers.find(l => l.name === rps.courseInfo.koordinatorProdi) ? rps.courseInfo.koordinatorProdi : rps.courseInfo.koordinatorProdi ? "custom" : ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "__ADD_CUSTOM__") {
+                            setShowCustomDosenModal(true);
+                          } else if (val !== "custom") {
+                            const lect = lecturers.find(l => l.name === val);
+                            updateCourseInfo({ koordinatorProdi: val, koordinatorProdiNidn: lect ? lect.nidn : "" });
+                          }
+                        }}
+                        className="w-full px-7 py-5 bg-slate-50/50 border border-slate-100 rounded-2xl outline-none font-bold text-slate-700 shadow-sm"
+                      >
+                        <option value="">Pilih Kaprodi...</option>
+                        {lecturers.map(l => (
+                          <option key={l.id} value={l.name}>{l.name}</option>
+                        ))}
+                        <option value="custom">Input Manual</option>
+                        <option value="__ADD_CUSTOM__" className="font-extrabold text-indigo-600">+ Tambah Dosen Baru...</option>
+                      </select>
+                      {(rps.courseInfo.koordinatorProdi === "" || !lecturers.find(l => l.name === rps.courseInfo.koordinatorProdi)) && rps.courseInfo.koordinatorProdi !== "" && (
+                        <input
+                          type="text"
+                          value={rps.courseInfo.koordinatorProdi}
+                          onChange={(e) => updateCourseInfo({ koordinatorProdi: e.target.value })}
+                          className="w-full px-7 py-5 bg-indigo-50/50 border border-indigo-100 rounded-2xl font-bold text-indigo-700 outline-none"
+                          placeholder="Nama Kaprodi & Gelar"
+                        />
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">NIDN Kaprodi</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">NIDN/NUPTK Kaprodi</label>
                     <input
                       type="text"
                       value={rps.courseInfo.koordinatorProdiNidn || ""}
                       onChange={(e) => updateCourseInfo({ koordinatorProdiNidn: e.target.value })}
                       className="w-full px-7 py-5 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-sky-500/10 focus:bg-white outline-none transition-all font-bold text-slate-700 shadow-sm"
-                      placeholder="NIDN Kaprodi"
+                      placeholder="NIDN / NUPTK Kaprodi"
                     />
                   </div>
-                  <div className="space-y-3 md:col-span-2">
+
+                  <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">Verifikator (Ketua SPMI)</label>
+                    <div className="space-y-3">
+                      <select
+                        value={lecturers.find(l => l.name === rps.courseInfo.ketuaSpmi) ? rps.courseInfo.ketuaSpmi : rps.courseInfo.ketuaSpmi ? "custom" : ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "__ADD_CUSTOM__") {
+                            setShowCustomDosenModal(true);
+                          } else if (val !== "custom") {
+                            const lect = lecturers.find(l => l.name === val);
+                            updateCourseInfo({ ketuaSpmi: val, spmiNidn: lect ? lect.nidn : "" });
+                          }
+                        }}
+                        className="w-full px-7 py-5 bg-slate-50/50 border border-slate-100 rounded-2xl outline-none font-bold text-slate-700 shadow-sm"
+                      >
+                        <option value="">Pilih Ketua SPMI...</option>
+                        {lecturers.map(l => (
+                          <option key={l.id} value={l.name}>{l.name}</option>
+                        ))}
+                        <option value="custom">Input Manual</option>
+                        <option value="__ADD_CUSTOM__" className="font-extrabold text-indigo-600">+ Tambah Dosen Baru...</option>
+                      </select>
+                      {(rps.courseInfo.ketuaSpmi === "" || !lecturers.find(l => l.name === rps.courseInfo.ketuaSpmi)) && rps.courseInfo.ketuaSpmi !== "" && (
+                        <input
+                          type="text"
+                          value={rps.courseInfo.ketuaSpmi || ""}
+                          onChange={(e) => updateCourseInfo({ ketuaSpmi: e.target.value })}
+                          className="w-full px-7 py-5 bg-indigo-50/50 border border-indigo-100 rounded-2xl font-bold text-indigo-700 outline-none"
+                          placeholder="Nama & Gelar Ketua SPMI"
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">NIDN/NUPTK Verifikator (Ketua SPMI)</label>
                     <input
                       type="text"
-                      value={rps.courseInfo.ketuaSpmi ?? "Ceicilia Rosma W, S.E., M.Si., Ak"}
-                      onChange={(e) => updateCourseInfo({ ketuaSpmi: e.target.value })}
+                      value={rps.courseInfo.spmiNidn || ""}
+                      onChange={(e) => updateCourseInfo({ spmiNidn: e.target.value })}
                       className="w-full px-7 py-5 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-sky-500/10 focus:bg-white outline-none transition-all font-bold text-slate-700 shadow-sm"
-                      placeholder="Nama & Gelar Ketua SPMI (misal: Ceicilia Rosma W, S.E., M.Si., Ak)"
+                      placeholder="NIDN / NUPTK Ketua SPMI"
                     />
                   </div>
                   {/* Institutional Info & Logo Upload Card */}
@@ -1829,7 +2152,7 @@ export default function App() {
                         </div>
                         <div>
                           <h4 className="text-sm font-black text-slate-800">Logo & Identitas Perguruan Tinggi</h4>
-                          <p className="text-[10px] text-slate-500 font-medium">Logo ini ditampilkan di Kop Dokumen RPS pada Tampilan Preview & Hasil Cetak</p>
+                          <p className="text-[10px] text-slate-500 font-medium">Logo dan nama perguruan tinggi ini ditampilkan di Kop Dokumen RPS pada Tampilan Preview & Hasil Cetak</p>
                         </div>
                       </div>
                       <label className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-all shadow-md flex items-center justify-center gap-2 self-start sm:self-auto">
@@ -1859,45 +2182,63 @@ export default function App() {
                       </label>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
-                      <div className="w-16 h-16 p-2 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex items-center justify-center shrink-0">
-                        <img
-                          src={systemConfig.institutionLogo || 'input_file_0.png'}
-                          alt="Logo Perguruan Tinggi"
-                          className="max-w-full max-h-full object-contain"
-                          referrerPolicy="no-referrer"
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+                      <div className="sm:col-span-2 flex flex-col items-center justify-center">
+                        <div className="w-16 h-16 p-2 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex items-center justify-center shrink-0">
+                          <img
+                            src={systemConfig.institutionLogo || 'input_file_0.png'}
+                            alt="Logo Perguruan Tinggi"
+                            className="max-w-full max-h-full object-contain"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                      </div>
+                      <div className="sm:col-span-10 space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Nama Perguruan Tinggi (Ditulis Manual)</label>
+                        <input
+                          type="text"
+                          value={rps.courseInfo.university}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateCourseInfo({ university: val });
+                            setSystemConfig({ ...systemConfig, universityName: val });
+                          }}
+                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-extrabold text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all"
+                          placeholder="Tulis Nama Perguruan Tinggi secara manual..."
                         />
                       </div>
-                      <div className="flex-1 space-y-1 text-center sm:text-left">
-                        <p className="text-xs font-extrabold text-slate-800">{systemConfig.universityName || rps.courseInfo.university || "Politeknik Sawunggalih Aji"}</p>
-                        <span className="inline-block px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[9px] font-black uppercase tracking-wider">{systemConfig.universityAlias || "POLSA KUTOARJO"}</span>
-                      </div>
-                      {systemConfig.institutionLogo && systemConfig.institutionLogo !== 'input_file_0.png' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (window.confirm("Kembalikan logo ke logo bawaan?")) {
-                              setSystemConfig({ ...systemConfig, institutionLogo: 'input_file_0.png' });
-                            }
-                          }}
-                          className="text-[10px] font-bold text-rose-500 hover:text-rose-700 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-100 transition-colors"
-                        >
-                          Reset Logo
-                        </button>
-                      )}
                     </div>
                   </div>
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">Program Studi</label>
+                    <div className="flex items-center justify-between px-4">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Program Studi</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowCustomProdiModal(true)}
+                        className="text-[10px] font-extrabold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-lg border border-indigo-100/80 transition-all flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" /> + Custom Prodi
+                      </button>
+                    </div>
                     <select
                       value={rps.courseInfo.program}
-                      onChange={(e) => updateCourseInfo({ program: e.target.value })}
+                      onChange={(e) => {
+                        if (e.target.value === '__ADD_CUSTOM__') {
+                          setShowCustomProdiModal(true);
+                        } else {
+                          updateCourseInfo({ program: e.target.value });
+                        }
+                      }}
                       className="w-full px-7 py-5 bg-slate-50/50 border border-slate-100 rounded-[2rem] focus:ring-4 focus:ring-sky-500/10 focus:bg-white outline-none transition-all font-bold text-slate-700 shadow-sm"
                     >
                       <option value="">Pilih Program Studi</option>
                       {programStudis.map(p => (
                         <option key={p.id} value={p.name}>{p.name}</option>
                       ))}
+                      {rps.courseInfo.program && !programStudis.some(p => p.name === rps.courseInfo.program) && (
+                        <option value={rps.courseInfo.program}>{rps.courseInfo.program} (Custom)</option>
+                      )}
+                      <option value="__ADD_CUSTOM__" className="font-extrabold text-indigo-600">+ Tambah Custom Program Studi...</option>
                     </select>
                   </div>
 
@@ -1926,38 +2267,70 @@ export default function App() {
                   </div>
                   {/* Reference Section */}
                   <div className="md:col-span-2 space-y-6 bg-slate-50/50 p-10 rounded-[3rem] border border-slate-100 mt-6 group">
-                    <div className="flex items-center justify-between px-2">
-                       <div className="space-y-1">
-                        <h4 className="text-sm font-black text-slate-700">Referensi RPS Lama (Opsional)</h4>
-                        <p className="text-[10px] text-slate-400 font-medium tracking-tight leading-none italic">Unggah atau tempel teks untuk membantu AI menyusun konten.</p>
-                       </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-2">
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-black text-slate-700 flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-indigo-500" />
+                          Referensi RPS / Silabus (PDF, Word, Teks)
+                        </h4>
+                        <p className="text-[10px] text-slate-400 font-medium tracking-tight leading-normal italic">
+                          Unggah file PDF (.pdf), Word (.docx, .doc), atau Teks (.txt, .md) untuk dianalisis oleh AI dalam menyusun RPS & Materi Mingguan.
+                        </p>
+                      </div>
                       <button 
+                        type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-white text-indigo-600 border border-indigo-100 rounded-2xl hover:bg-indigo-50 transition-all font-black text-[10px] uppercase tracking-widest shadow-sm"
+                        className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white text-indigo-600 border border-indigo-200 rounded-2xl hover:bg-indigo-50 transition-all font-black text-[10px] uppercase tracking-widest shadow-sm shrink-0 cursor-pointer"
                       >
-                        <Upload className="w-4 h-4" /> Upload
+                        <Upload className="w-4 h-4" /> Unggah Berkas
                       </button>
                       <input 
                         type="file" 
                         ref={fileInputRef} 
                         onChange={handleFileUpload} 
                         className="hidden" 
-                        accept=".txt,.md"
+                        accept=".pdf,.docx,.doc,.txt,.md"
                       />
                     </div>
+
+                    {uploadedFileObj && (
+                      <div className="flex items-center justify-between p-4 bg-indigo-50/80 border border-indigo-100 rounded-2xl text-xs font-bold text-indigo-900 shadow-sm">
+                        <div className="flex items-center gap-3 truncate">
+                          <div className="p-2 bg-indigo-600 text-white rounded-xl">
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div className="truncate">
+                            <p className="font-extrabold truncate">{uploadedFileObj.name}</p>
+                            <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-wider">{uploadedFileObj.type} • {(uploadedFileObj.size / 1024).toFixed(1)} KB</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUploadedFileObj(null);
+                            setOldRpsContent("");
+                          }}
+                          className="p-1.5 bg-rose-100 text-rose-600 rounded-lg hover:bg-rose-200 transition-all shrink-0 ml-2 cursor-pointer"
+                          title="Hapus berkas"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                     
                     <div className="relative">
                       <textarea
                         value={oldRpsContent}
                         onChange={(e) => setOldRpsContent(e.target.value)}
                         rows={4}
-                        className="w-full px-8 py-6 bg-white border border-slate-200 rounded-[2rem] focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-300 outline-none transition-all text-slate-500 font-medium text-sm leading-relaxed shadow-sm"
-                        placeholder="Tempelkan teks kurikulum lama di sini..."
+                        className="w-full px-8 py-6 bg-white border border-slate-200 rounded-[2rem] focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-300 outline-none transition-all text-slate-600 font-medium text-sm leading-relaxed shadow-sm"
+                        placeholder="Atau tempelkan teks kurikulum / silabus / referensi di sini..."
                       />
-                      {oldRpsContent && (
+                      {oldRpsContent && !uploadedFileObj && (
                         <button 
+                          type="button"
                           onClick={() => setOldRpsContent("")}
-                          className="absolute top-4 right-4 p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 transition-all"
+                          className="absolute top-4 right-4 p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 transition-all cursor-pointer"
                         >
                           <X className="w-4 h-4" />
                         </button>
@@ -2028,12 +2401,23 @@ export default function App() {
                   </h3>
                   <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest pl-11">CAPAIAN PEMBELAJARAN LULUSAN</p>
                 </div>
-                <button 
-                  onClick={() => setRps(prev => ({ ...prev, cpls: [...prev.cpls, { id: Date.now().toString(), code: `CPL-${prev.cpls.length + 1}`, description: "" }] }))}
-                  className="flex items-center gap-3 px-6 py-3 bg-indigo-50 text-indigo-600 rounded-2xl hover:bg-indigo-100 transition-all font-black text-[10px] uppercase tracking-widest shadow-sm"
-                >
-                  <Plus className="w-4 h-4" /> Tambah CPL
-                </button>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button 
+                    type="button"
+                    onClick={handleGenerateCPLsAI}
+                    disabled={isGeneratingCPL}
+                    className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl hover:opacity-90 transition-all font-black text-[10px] uppercase tracking-widest shadow-md cursor-pointer disabled:opacity-50"
+                  >
+                    {isGeneratingCPL ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    Bantu Isi CPL (AI)
+                  </button>
+                  <button 
+                    onClick={() => setRps(prev => ({ ...prev, cpls: [...prev.cpls, { id: Date.now().toString(), code: `CPL-${prev.cpls.length + 1}`, description: "" }] }))}
+                    className="flex items-center gap-2 px-5 py-3 bg-indigo-50 text-indigo-600 rounded-2xl hover:bg-indigo-100 transition-all font-black text-[10px] uppercase tracking-widest shadow-sm cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" /> Tambah CPL
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-4">
@@ -2081,12 +2465,23 @@ export default function App() {
                   </h3>
                   <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest pl-11">CAPAIAN PEMBELAJARAN MATA KULIAH</p>
                 </div>
-                <button 
-                  onClick={() => setRps(prev => ({ ...prev, cpmks: [...prev.cpmks, { id: Date.now().toString(), code: `CPMK-${prev.cpmks.length + 1}`, description: "", mappedCPLIds: [] }] }))}
-                  className="flex items-center gap-3 px-6 py-3 bg-sky-50 text-sky-600 rounded-2xl hover:bg-sky-100 transition-all font-black text-[10px] uppercase tracking-widest shadow-sm"
-                >
-                  <Plus className="w-4 h-4" /> Tambah CPMK
-                </button>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button 
+                    type="button"
+                    onClick={handleGenerateCPMKsAI}
+                    disabled={isGeneratingCPMK}
+                    className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-sky-600 to-indigo-600 text-white rounded-2xl hover:opacity-90 transition-all font-black text-[10px] uppercase tracking-widest shadow-md cursor-pointer disabled:opacity-50"
+                  >
+                    {isGeneratingCPMK ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    Bantu Isi CPMK (AI)
+                  </button>
+                  <button 
+                    onClick={() => setRps(prev => ({ ...prev, cpmks: [...prev.cpmks, { id: Date.now().toString(), code: `CPMK-${prev.cpmks.length + 1}`, description: "", mappedCPLIds: [] }] }))}
+                    className="flex items-center gap-2 px-5 py-3 bg-sky-50 text-sky-600 rounded-2xl hover:bg-sky-100 transition-all font-black text-[10px] uppercase tracking-widest shadow-sm cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" /> Tambah CPMK
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-6">
@@ -2241,12 +2636,23 @@ export default function App() {
                   </h3>
                   <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest pl-11">CAPAIAN PEMBELAJARAN KHUSUS</p>
                 </div>
-                <button 
-                  onClick={() => setRps(prev => ({ ...prev, subCpmks: [...prev.subCpmks, { id: Date.now().toString(), code: `Sub-CPMK-${prev.subCpmks.length + 1}`, description: "", mappedCPMKIds: [] }] }))}
-                  className="flex items-center gap-3 px-6 py-3 bg-emerald-50 text-emerald-600 rounded-2xl hover:bg-emerald-100 transition-all font-black text-[10px] uppercase tracking-widest shadow-sm"
-                >
-                  <Plus className="w-4 h-4" /> Tambah Sub-CPMK
-                </button>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button 
+                    type="button"
+                    onClick={handleGenerateSubCPMKsAI}
+                    disabled={isGeneratingSubCPMK}
+                    className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl hover:opacity-90 transition-all font-black text-[10px] uppercase tracking-widest shadow-md cursor-pointer disabled:opacity-50"
+                  >
+                    {isGeneratingSubCPMK ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    Bantu Isi Sub-CPMK (AI)
+                  </button>
+                  <button 
+                    onClick={() => setRps(prev => ({ ...prev, subCpmks: [...prev.subCpmks, { id: Date.now().toString(), code: `Sub-CPMK-${prev.subCpmks.length + 1}`, description: "", mappedCPMKIds: [] }] }))}
+                    className="flex items-center gap-2 px-5 py-3 bg-emerald-50 text-emerald-600 rounded-2xl hover:bg-emerald-100 transition-all font-black text-[10px] uppercase tracking-widest shadow-sm cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" /> Tambah Sub-CPMK
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-6">
@@ -2685,22 +3091,38 @@ export default function App() {
                 </div>
                 <p className="text-slate-500 font-medium ml-4 tracking-tight">Rincian aktivitas pembelajaran per pertemuan (16 Minggu).</p>
               </div>
-              <button 
-                onClick={() => {
-                  const newPlans = [...rps.weeklyPlans];
-                  const utsComp = (rps.assessmentComponents || []).find(c => c.type === 'UTS');
-                  const uasComp = (rps.assessmentComponents || []).find(c => c.type === 'UAS');
-                  
-                  if (utsComp) newPlans[7].weight = utsComp.totalWeight;
-                  if (uasComp) newPlans[15].weight = uasComp.totalWeight;
-                  
-                  setRps({...rps, weeklyPlans: newPlans});
-                  alert("Bobot UTS/UAS disinkronkan dari Komponen Penilaian.");
-                }}
-                className="px-6 py-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100 hover:bg-emerald-100 transition-all font-black text-[10px] uppercase tracking-widest shadow-sm flex items-center gap-2"
-              >
-                <RefreshCcw className="w-4 h-4" /> Sync Bobot UTS/UAS
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <button 
+                  type="button"
+                  onClick={handleGenerateWeeklyAI}
+                  disabled={isGeneratingWeekly}
+                  className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl transition-all font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-200/80 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isGeneratingWeekly ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  ) : (
+                    <Sparkles className="w-4 h-4 text-emerald-200" />
+                  )}
+                  {isGeneratingWeekly ? "Meng-generate..." : "Generate Materi Mingguan (AI)"}
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    const newPlans = [...rps.weeklyPlans];
+                    const utsComp = (rps.assessmentComponents || []).find(c => c.type === 'UTS');
+                    const uasComp = (rps.assessmentComponents || []).find(c => c.type === 'UAS');
+                    
+                    if (utsComp) newPlans[7].weight = utsComp.totalWeight;
+                    if (uasComp) newPlans[15].weight = uasComp.totalWeight;
+                    
+                    setRps({...rps, weeklyPlans: newPlans});
+                    alert("Bobot UTS/UAS disinkronkan dari Komponen Penilaian.");
+                  }}
+                  className="px-6 py-3 bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50 transition-all font-black text-[10px] uppercase tracking-widest shadow-sm flex items-center gap-2 cursor-pointer rounded-2xl"
+                >
+                  <RefreshCcw className="w-4 h-4" /> Sync Bobot UTS/UAS
+                </button>
+              </div>
             </header>
 
             <div className="space-y-6">
@@ -3106,7 +3528,7 @@ export default function App() {
       case "preview":
         return (
           <div className="space-y-12">
-            <header className="flex flex-col gap-2">
+            <header className="flex flex-col gap-2 print:hidden no-print">
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-8 bg-indigo-500 rounded-full" />
                 <h2 className="text-3xl font-black text-slate-800 tracking-tight">Preview & Cetak</h2>
@@ -3114,7 +3536,7 @@ export default function App() {
               <p className="text-slate-500 font-medium ml-4 tracking-tight">Tinjau draft akhir RPS sebelum diterbitkan atau dicetak.</p>
             </header>
 
-            <div className="flex flex-col md:flex-row justify-between items-center bg-white p-8 rounded-[3rem] border border-slate-100 shadow-[0_10px_40px_rgba(0,0,0,0.02)] print:hidden gap-6">
+            <div className="flex flex-col md:flex-row justify-between items-center bg-white p-8 rounded-[3rem] border border-slate-100 shadow-[0_10px_40px_rgba(0,0,0,0.02)] print:hidden no-print gap-6">
               <div className="flex items-center gap-6">
                 <div className="p-4 bg-indigo-50 text-indigo-500 rounded-[2rem] shadow-sm">
                   <FileText className="w-8 h-8" />
@@ -3224,7 +3646,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden relative">
+    <div className="flex h-screen print:h-auto print:block print:overflow-visible bg-slate-50 text-slate-900 font-sans overflow-hidden relative">
       {/* Decorative Background Elements */}
       <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-sky-200/20 blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute bottom-[-10%] left-[-5%] w-[30%] h-[30%] bg-indigo-200/20 blur-[100px] rounded-full pointer-events-none" />
@@ -3235,14 +3657,13 @@ export default function App() {
           <img src={systemConfig.institutionLogo || "input_file_0.png"} alt="Logo" className="w-12 h-12 object-contain" referrerPolicy="no-referrer" />
           <div>
             <h1 className="text-lg font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-sky-600">OBE Master Pro</h1>
-            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">{systemConfig.universityAlias || "POLSA KUTOARJO"}</p>
           </div>
         </div>
 
         <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto custom-scrollbar">
           {[
             { id: "admin-dashboard", label: "Dashboard Admin", icon: Shield, adminOnly: true },
-            { id: "admin-users", label: "Manajemen User", icon: Users, adminOnly: true },
+            { id: "admin-users", label: "Manajemen Pengguna", icon: Users, adminOnly: true },
             { id: "admin-core", label: "Data Inti (OBE)", icon: Settings, adminOnly: true },
             { id: "admin-rps", label: userRole === 'spmi' ? "Validasi SPMI" : userRole === 'kaprodi' ? "Validasi Kaprodi" : "Validasi RPS", icon: BookOpen, validationRole: true },
             { id: "admin-settings", label: "Pengaturan Sistem", icon: Sliders, adminOnly: true },
@@ -3335,7 +3756,7 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-6 md:p-10 scroll-smooth print:p-0 print:overflow-visible z-10">
+      <main className="flex-1 overflow-y-auto p-6 md:p-10 scroll-smooth print:p-0 print:overflow-visible print:block print:h-auto z-10">
         <div className={`mx-auto space-y-8 ${activeSection === 'preview' ? 'max-w-none print:w-full print:m-0' : 'max-w-5xl'}`}>
           {successNotice && (
             <div className="p-5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-900 rounded-3xl flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-4 duration-300 no-print">
@@ -3417,6 +3838,424 @@ export default function App() {
                   className="flex-1 py-4 bg-amber-600 hover:bg-amber-500 text-white font-extrabold rounded-2xl text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-600/25 hover:shadow-amber-600/40 hover:-translate-y-0.5 cursor-pointer"
                 >
                   Lanjutkan Validasi
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Tambah Custom Program Studi */}
+      <AnimatePresence>
+        {showCustomProdiModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm no-print">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6 text-slate-800 relative z-50"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+                    <Plus className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-800 tracking-tight">Tambah Custom Program Studi</h3>
+                    <p className="text-xs text-slate-500 font-medium">Tambahkan program studi baru ke pilihan menu.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCustomProdiModal(false)}
+                  className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-50"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Nama Program Studi</label>
+                  <input
+                    type="text"
+                    value={customProdiName}
+                    onChange={(e) => setCustomProdiName(e.target.value)}
+                    placeholder="Contoh: S1 Teknologi Informasi"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Kode / Singkatan Prodi (Opsional)</label>
+                  <input
+                    type="text"
+                    value={customProdiCode}
+                    onChange={(e) => setCustomProdiCode(e.target.value)}
+                    placeholder="Contoh: TI"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomProdiModal(false)}
+                  className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-extrabold rounded-2xl text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!customProdiName.trim()) {
+                      alert("Masukkan nama Program Studi terlebih dahulu.");
+                      return;
+                    }
+                    const nameTrimmed = customProdiName.trim();
+                    const codeTrimmed = customProdiCode.trim() || nameTrimmed.substring(0, 4).toUpperCase();
+                    
+                    const exists = programStudis.find(p => p.name.toLowerCase() === nameTrimmed.toLowerCase());
+                    if (!exists) {
+                      const newProdi = { id: Date.now().toString(), name: nameTrimmed, code: codeTrimmed };
+                      setProgramStudis(prev => [...prev, newProdi]);
+                    }
+                    
+                    updateCourseInfo({ program: nameTrimmed });
+                    setCustomProdiName("");
+                    setCustomProdiCode("");
+                    setShowCustomProdiModal(false);
+                  }}
+                  className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-xs uppercase tracking-wider transition-all shadow-lg shadow-indigo-600/25 cursor-pointer"
+                >
+                  Simpan & Pilih
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Tambah Pengguna Baru */}
+      <AnimatePresence>
+        {showAddUserModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm no-print">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-[2.5rem] p-8 max-w-lg w-full shadow-2xl border border-slate-100 space-y-6 text-slate-800 relative z-50"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+                    <UserPlus className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-800 tracking-tight">Tambah Pengguna Baru</h3>
+                    <p className="text-xs text-slate-500 font-medium">Buat akun civitas akademika baru di sistem.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddUserModal(false)}
+                  className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-50 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Nama Lengkap & Gelar *</label>
+                  <input
+                    type="text"
+                    value={newUserForm.name}
+                    onChange={(e) => setNewUserForm({ ...newUserForm, name: e.target.value })}
+                    placeholder="Contoh: Dr. Budi Santoso, S.T., M.Kom."
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">NIDN / Username *</label>
+                    <input
+                      type="text"
+                      value={newUserForm.nidn}
+                      onChange={(e) => setNewUserForm({ ...newUserForm, nidn: e.target.value })}
+                      placeholder="Contoh: 0612048501"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Hak Akses / Role *</label>
+                    <select
+                      value={newUserForm.role}
+                      onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value as UserRole })}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all cursor-pointer"
+                    >
+                      <option value="dosen">Dosen Pengampu</option>
+                      <option value="kaprodi">Kaprodi (Ketua Prodi)</option>
+                      <option value="spmi">Ketua SPMI</option>
+                      <option value="admin">Administrator</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Alamat Email *</label>
+                  <input
+                    type="email"
+                    value={newUserForm.email}
+                    onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
+                    placeholder="Contoh: budi@polsa.ac.id"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Kata Sandi / Password *</label>
+                  <input
+                    type="text"
+                    value={newUserForm.password}
+                    onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
+                    placeholder="Minimal 6 karakter"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddUserModal(false)}
+                  className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-extrabold rounded-2xl text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!newUserForm.name.trim()) {
+                      alert("Nama lengkap pengguna wajib diisi.");
+                      return;
+                    }
+                    if (!newUserForm.nidn.trim()) {
+                      alert("NIDN / Username pengguna wajib diisi.");
+                      return;
+                    }
+                    if (!newUserForm.email.trim()) {
+                      alert("Alamat email pengguna wajib diisi.");
+                      return;
+                    }
+                    if (!newUserForm.password.trim()) {
+                      alert("Password wajib diisi.");
+                      return;
+                    }
+
+                    const exists = lecturers.find(
+                      l => l.nidn.toLowerCase() === newUserForm.nidn.trim().toLowerCase() ||
+                           l.email.toLowerCase() === newUserForm.email.trim().toLowerCase()
+                    );
+                    if (exists) {
+                      alert("NIDN / Username atau Email sudah terdaftar. Gunakan NIDN/email lain.");
+                      return;
+                    }
+
+                    const createdUser: Lecturer = {
+                      id: Date.now().toString(),
+                      name: newUserForm.name.trim(),
+                      nidn: newUserForm.nidn.trim(),
+                      email: newUserForm.email.trim(),
+                      role: newUserForm.role,
+                      password: newUserForm.password.trim()
+                    };
+
+                    setLecturers(prev => [...prev, createdUser]);
+                    setShowAddUserModal(false);
+                    setNewUserForm({ name: "", nidn: "", email: "", role: "dosen", password: "" });
+                    setSuccessNotice(`User "${createdUser.name}" (${createdUser.role}) berhasil ditambahkan!`);
+                  }}
+                  className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-xs uppercase tracking-wider transition-all shadow-lg shadow-indigo-600/25 cursor-pointer"
+                >
+                  Simpan Pengguna
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Edit / Reset Password User */}
+      <AnimatePresence>
+        {editingUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm no-print">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6 text-slate-800 relative z-50"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
+                    <Settings className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-800 tracking-tight">Ubah Password Pengguna</h3>
+                    <p className="text-xs text-slate-500 font-medium">{editingUser.name} ({editingUser.nidn})</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-50 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Password Baru</label>
+                  <input
+                    type="text"
+                    value={editPasswordValue}
+                    onChange={(e) => setEditPasswordValue(e.target.value)}
+                    placeholder="Masukkan password baru..."
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 text-xs focus:ring-2 focus:ring-amber-500 focus:bg-white outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-extrabold rounded-2xl text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!editPasswordValue.trim()) {
+                      alert("Masukkan password baru.");
+                      return;
+                    }
+                    const pass = editPasswordValue.trim();
+                    setLecturers(prev => prev.map(u => u.id === editingUser.id ? { ...u, password: pass } : u));
+                    setSuccessNotice(`Password pengguna ${editingUser.name} berhasil diperbarui.`);
+                    setEditingUser(null);
+                    setEditPasswordValue("");
+                  }}
+                  className="flex-1 py-3.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-2xl text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-600/25 cursor-pointer"
+                >
+                  Simpan Password
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Tambah Custom Dosen Pengembang RPS */}
+      <AnimatePresence>
+        {showCustomDosenModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm no-print">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6 text-slate-800 relative z-50"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+                    <Plus className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-800 tracking-tight">Tambah Dosen Pengembang Baru</h3>
+                    <p className="text-xs text-slate-500 font-medium">Tambahkan nama dosen pengembang ke daftar pilihan sistem.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCustomDosenModal(false)}
+                  className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-50 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Nama Dosen & Gelar</label>
+                  <input
+                    type="text"
+                    value={customDosenName}
+                    onChange={(e) => setCustomDosenName(e.target.value)}
+                    placeholder="Contoh: Dr. Budi Santoso, S.Kom., M.Kom."
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">NIDN / NUPTK (Opsional)</label>
+                  <input
+                    type="text"
+                    value={customDosenNidn}
+                    onChange={(e) => setCustomDosenNidn(e.target.value)}
+                    placeholder="Contoh: 0612048501"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomDosenModal(false)}
+                  className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-extrabold rounded-2xl text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!customDosenName.trim()) {
+                      alert("Masukkan nama dosen terlebih dahulu.");
+                      return;
+                    }
+                    const nameTrimmed = customDosenName.trim();
+                    const nidnTrimmed = customDosenNidn.trim();
+
+                    const exists = lecturers.find(l => l.name.toLowerCase() === nameTrimmed.toLowerCase());
+                    if (!exists) {
+                      const newDosen: Lecturer = {
+                        id: Date.now().toString(),
+                        name: nameTrimmed,
+                        nidn: nidnTrimmed || '-',
+                        email: `${nameTrimmed.toLowerCase().replace(/[^a-z]/g, '')}@polsa.ac.id`,
+                        password: 'dosen123',
+                        role: 'dosen'
+                      };
+                      setLecturers(prev => [...prev, newDosen]);
+                    }
+
+                    updateCourseInfo({
+                      pengembangRPS: nameTrimmed,
+                      ...(nidnTrimmed ? { lecturerNidn: nidnTrimmed } : {})
+                    });
+
+                    setCustomDosenName("");
+                    setCustomDosenNidn("");
+                    setShowCustomDosenModal(false);
+                  }}
+                  className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-xs uppercase tracking-wider transition-all shadow-lg shadow-indigo-600/25 cursor-pointer"
+                >
+                  Simpan & Pilih
                 </button>
               </div>
             </motion.div>
