@@ -11,7 +11,14 @@ interface Props {
 export default function RPSPreview({ data, institutionLogo, universityName }: Props) {
   const { courseInfo, cpls, cpmks, subCpmks, weeklyPlans } = data;
   const logoSrc = institutionLogo || "input_file_0.png";
-  const displayUniName = universityName || courseInfo.university || "POLITEKNIK SAWUNGGALIH AJI";
+  const displayUniName = courseInfo.university || universityName || "POLITEKNIK SAWUNGGALIH AJI";
+
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return "-";
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
 
   // Validation stage checkmark flags
   const isDosenValidated = !!data.status && data.status !== 'Draft';
@@ -84,7 +91,7 @@ export default function RPSPreview({ data, institutionLogo, universityName }: Pr
               <p className="font-bold border-b border-black mb-8">Pengembang RPS</p>
               <div className="mt-auto pt-4 italic">
                 <p className="font-bold uppercase underline">{courseInfo.pengembangRPS || courseInfo.lecturer}</p>
-                <p className="text-[8pt] text-gray-600">NIDN/NUPTK: {courseInfo.lecturerNidn || '-'}</p>
+                <p className="text-[8pt] text-gray-600">NIDN/NUPTK: {courseInfo.pengembangNidn || courseInfo.lecturerNidn || '-'}</p>
               </div>
             </td>
             <td className="border-r border-black p-1 w-1/4 align-top">
@@ -390,6 +397,7 @@ export default function RPSPreview({ data, institutionLogo, universityName }: Pr
                   <div className="h-12 my-1" />
                 )}
                 <p className="font-bold text-[8.5pt] mt-1">{courseInfo.ketuaSpmi || "Ceicilia Rosma W, S.E., M.Si., Ak"}</p>
+                <p className="text-[7.5pt] text-gray-700 font-medium">NIDN/NUPTK: {courseInfo.spmiNidn || '-'}</p>
               </div>
             </td>
             <td className="border-r border-black p-3 align-bottom">
@@ -402,6 +410,7 @@ export default function RPSPreview({ data, institutionLogo, universityName }: Pr
                   <div className="h-12 my-1" />
                 )}
                 <p className="font-bold text-[8.5pt] mt-1">{courseInfo.koordinatorProdi || "Ahmad Syarif M, S.E., M.B.A"}</p>
+                <p className="text-[7.5pt] text-gray-700 font-medium">NIDN/NUPTK: {courseInfo.koordinatorProdiNidn || '-'}</p>
               </div>
             </td>
             <td className="p-3 align-bottom">
@@ -414,13 +423,12 @@ export default function RPSPreview({ data, institutionLogo, universityName }: Pr
                   <div className="h-12 my-1" />
                 )}
                 <p className="font-bold text-[8.5pt] mt-1">{courseInfo.koordinatorRMK || courseInfo.pengembangRPS || courseInfo.lecturer || "Ahmad Syarif M, S.E., M.B.A"}</p>
+                <p className="text-[7.5pt] text-gray-700 font-medium">NIDN/NUPTK: {courseInfo.lecturerNidn || courseInfo.pengembangNidn || '-'}</p>
               </div>
             </td>
           </tr>
         </tbody>
       </table>
-
-      <p className="text-[8pt] text-center mt-6 font-medium italic text-slate-700">RPS di unduh pada aplikasi siap.polsa.ac.id</p>
     </div>
   );
 }
